@@ -1,0 +1,47 @@
+paper:
+  slug: detecting-multi-scale-faces-using-attention-based-feature-fusion-and-s
+  title: Detecting Multi-Scale Faces Using Attention-Based Feature Fusion and Smoothed Context Enhancement (SANet)
+  doi: 10.1109/TBIOM.2020.2993242
+source_code:
+  url: null
+  commit: null
+data:
+  root: ../../datasets/wider-face
+  max_train_samples: null
+  max_val_samples: null
+model:
+  name: sanet
+  attention_mode: sa
+  input_size: 640
+  pretrained_backbone: true
+  max_in: 3
+  max_out: 3
+train:
+  batch_size: 14
+  # Effective batch 14 via micro-batch × accumulation (memory on 11–32 GiB GPUs)
+  micro_batch_size: 2
+  max_iters: 120000
+  lr: 0.001
+  lr_gamma: 0.1
+  lr_milestones: [80000, 100000]
+  momentum: 0.9
+  weight_decay: 0.0005
+  iou_thresh: 0.35
+  num_workers: 4
+  log_every: 50
+  ckpt_every: 5000
+  seed: 42
+eval:
+  batch_size: 4
+  score_thresh: 0.05
+  nms_thresh: 0.5
+  metric: wider_map
+paths:
+  checkpoint_dir: outputs/checkpoints
+  log_dir: outputs/logs
+  pred_dir: outputs/predictions
+  figure_dir: outputs/figures
+report:
+  title: SANet Face Detection Report
+  embed_format: svg
+device: cuda
