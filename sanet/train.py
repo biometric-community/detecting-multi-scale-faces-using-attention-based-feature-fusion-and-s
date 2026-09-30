@@ -30,10 +30,9 @@ def train(cfg: dict, project_root: Path) -> None:
     # Paper batch is 14; use micro-batch + grad accumulation when GPU memory is tight.
     target_bs = int(cfg["train"]["batch_size"])
     micro_bs = int(cfg["train"].get("micro_batch_size") or target_bs)
-    accum = max(1, target_bs // micro_bs)
-    if micro_bs * accum != target_bs:
-        # e.g. target 14, micro 2 → accum 7
-        accum = max(1, (target_bs + micro_bs - 1) // micro_bs)
+    accum = max(1, (target_bs + micro_bs - 1) // micro_bs)
+    use_amp = bool(cfg["train"].get("use_amp", False)) and device.type == "cuda"
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
     loader = DataLoader(
         ds,
         batch_size=micro_bs,
@@ -42,6 +41,7 @@ def train(cfg: dict, project_root: Path) -> None:
         collate_fn=wider_collate,
         pin_memory=True,
         drop_last=True,
+        persistent_workers=cfg["train"].get("num_workers", 4) > 0,
     )
     model = SANet(
         attention_mode=cfg["model"].get("attention_mode", "sa"),
@@ -69,7 +69,7 @@ def train(cfg: dict, project_root: Path) -> None:
     t0 = time.time()
     data_iter = iter(loader)
     print(
-        f"Train device={device} target_batch={target_bs} micro_batch={micro_bs} accum={accum}",
+        f"Train device={device} target_batch={target_bs} micro_batch={micro_bs} accum={accum} amp={use_amp}",
         flush=True,
     )
     while it < max_iters:
@@ -87,15 +87,19 @@ def train(cfg: dict, project_root: Path) -> None:
                 batch = next(data_iter)
             images = batch["images"].to(device, non_blocking=True)
             targets = batch["targets"]
-            out = model(images)
-            losses = criterion(out, targets, model.max_in, model.max_out)
-            (losses["loss"] / accum).backward()
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                out = model(images)
+                losses = criterion(out, targets, model.max_in, model.max_out)
+                loss = losses["loss"] / accum
+            scaler.scale(loss).backward()
             loss_meter["loss"] += float(losses["loss"].detach()) / accum
             loss_meter["loss_cls"] += float(losses["loss_cls"].detach()) / accum
             loss_meter["loss_reg"] += float(losses["loss_reg"].detach()) / accum
             loss_meter["n_matched"] += int(losses["n_matched"])
+        scaler.unscale_(optim)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-        optim.step()
+        scaler.step(optim)
+        scaler.update()
         it += 1
         if it % log_every == 0 or it == 1:
             row = {

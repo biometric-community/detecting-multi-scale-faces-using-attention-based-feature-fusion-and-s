@@ -70,3 +70,11 @@ Required corpus for size gate: **WIDER FACE** (train+val annotations/images). FD
 - D1: No AFW/PASCAL/UFDD local data
 - D2: No official code; PyTorch reimplementation
 - D3: Max-in-out channel count assumed 3/3 from PyramidBox
+
+
+## Size gate decision
+
+- Measured WIDER FACE root: **3.4538 GiB** (`outputs/logs/dataset_size.json`)
+- Decision: **full_train** (< 5 GiB)
+- Full train command: `CUDA_VISIBLE_DEVICES=2 python -m sanet.train --config configs/default.yaml`
+- Log: `outputs/logs/train_full.log` (PID tracked at launch; ~3–4 s/iter ⇒ multi-day wall clock for 120k)
